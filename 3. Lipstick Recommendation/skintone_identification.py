@@ -8,8 +8,8 @@ def load_skin_tone_ids():
     """
     try:
         # Load the Excel files
-        expert_df = pd.read_excel("expertRecommendation_top_10_skus_per_RBG.xlsx")
-        review_df = pd.read_excel("skinToneRecommendation_top_20_skus_per_skinTone.xlsx")
+        expert_df = pd.read_excel("expertRecommendation_top_10_skus_per_RBG_w_review_summarized.xlsx")
+        review_df = pd.read_excel("skinToneRecommendation_top_20_skus_per_skinTone_w_review_summarized.xlsx")
         
         # Get unique skin tone IDs
         expert_skin_ids = sorted(expert_df['Skin_ID'].unique())
