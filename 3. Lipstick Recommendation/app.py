@@ -12,9 +12,9 @@ import plotly.express as px
 # st.set_page_config(layout="wide")
 
 # Load the data files
-file_path_expert_skintone = "expertRecommendation_top_10_skus_per_RBG_w_review_summarized.xlsx"
-file_path_review_skintone = "skinToneRecommendation_top_20_skus_per_skinTone_w_review_summarized.xlsx"
-file_path_colorcluster = "colorClusterRecommendation_top_20_skus_per_colorCluster_w_review_summarized.xlsx"
+file_path_expert_skintone = "recommendation_datasets/expertRecommendation_top_10_skus_per_RBG_w_review_summarized.xlsx"
+file_path_review_skintone = "recommendation_datasets/skinToneRecommendation_top_20_skus_per_skinTone_w_review_summarized.xlsx"
+file_path_colorcluster = "recommendation_datasets/colorClusterRecommendation_top_20_skus_per_colorCluster_w_review_summarized.xlsx"
 
 expert_df = pd.read_excel(file_path_expert_skintone)
 review_df = pd.read_excel(file_path_review_skintone)
@@ -216,7 +216,8 @@ def format_dataframe(df):
     )
 
     def convert_text_to_scrollable_html(text, max_height="100px"):
-        return f'''<div style="max-height: {max_height}; overflow-y: auto; white-space: pre-wrap;">{text.lstrip('\n').rstrip('\n').replace('\n\n','\n').replace('\n\n','\n').replace('\n \n','\n').replace('• ','').replace('* ','').replace('- ','').replace('\n', '<br>')}</div>'''
+        cleaned_text = text.lstrip('\n').rstrip('\n').replace('\n\n','\n').replace('\n\n','\n').replace('\n \n','\n').replace('• ','').replace('* ','').replace('- ','').replace('\n', '<br>')
+        return f'''<div style="max-height: {max_height}; overflow-y: auto; white-space: pre-wrap;">{cleaned_text}</div>'''
 
     formatted_df["Sentiment"] = formatted_df["Sentiment"].apply(
         lambda x: convert_text_to_scrollable_html(x) if x else ""
