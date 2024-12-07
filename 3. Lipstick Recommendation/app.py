@@ -7,6 +7,7 @@ import numpy as np
 import os
 from skintone_identification import get_skintone_id
 import plotly.express as px
+from PIL import Image, ImageOps
 
 # Set page configuration to wide mode
 # st.set_page_config(layout="wide")
@@ -57,14 +58,32 @@ def get_color_options(df):
 
 
 # Section 3: Image Processing Function
+def load_and_process_image(uploaded_file):
+    # Open the image
+    image = Image.open(uploaded_file)
+    
+    # Fix orientation using EXIF data
+    image = ImageOps.exif_transpose(image)
+    
+    # Calculate new dimensions while maintaining aspect ratio
+    max_width = 300
+    aspect_ratio = image.width / image.height
+    new_width = min(max_width, image.width)
+    new_height = int(new_width / aspect_ratio)
+    
+    # Resize image
+    resized_image = image.resize((new_width, new_height), Image.LANCZOS)
+    
+    return resized_image
+
 def process_uploaded_image():
     uploaded_file = st.file_uploader(
         "Choose an image to identify your skin tone", type=["png", "jpg", "jpeg"]
     )
 
     if uploaded_file is not None:
-        # First display the image
-        st.image(uploaded_file, caption="Uploaded Image", width=300)
+        processed_image = load_and_process_image(uploaded_file)
+        st.image(processed_image, caption="Uploaded Image", use_column_width=False)
 
         # Save the uploaded file temporarily
         with open("temp_image.jpg", "wb") as f:

@@ -2,9 +2,14 @@ FROM --platform=linux/amd64 python:3.10-slim
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy requirements and install
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Copy all necessary files
 COPY . .
