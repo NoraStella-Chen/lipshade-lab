@@ -49,7 +49,7 @@ def process_uploaded_image():
     if uploaded_file is not None:
         # Display the uploaded image (original)
         processed_image = load_and_process_image(uploaded_file)
-        st.image(processed_image, caption="Uploaded Image", use_column_width=False)
+        st.image(processed_image, caption="Uploaded Image")
 
         with open("temp_image.jpg", "wb") as f:
             f.write(uploaded_file.getvalue())
@@ -200,7 +200,7 @@ def format_dataframe(df):
         "Product Info": "Product Info",
         "Sentiment": "Review Summary by LLM",
         "lipstick_image_base64": "SKU Image",
-        "URL": "Link",
+        "URL": "Link (USA only)",
     }
     formatted_df.rename(columns=column_rename, inplace=True)
 
