@@ -3,3 +3,8 @@ pandas>=2.0.0
 plotly>=5.3.1
 openpyxl>=3.1.2
 numpy
+mediapipe
+opencv-python
+scikit-learn
+matplotlib
+seaborn

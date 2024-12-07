@@ -1,50 +1,70 @@
-import random
 from PIL import Image
 import pandas as pd
+import cv2
+import mediapipe as mp
+import numpy as np
 
-def load_skin_tone_ids():
+def get_skintone_id(image_path, excel_path='./recommendation_datasets/Mapping table 2 Sephora.xlsx'):
     """
-    Load and extract unique skin tone IDs from the recommendation files
-    """
-    try:
-        # Load the Excel files
-        expert_df = pd.read_excel("expertRecommendation_top_10_skus_per_RBG_w_review_summarized.xlsx")
-        review_df = pd.read_excel("skinToneRecommendation_top_20_skus_per_skinTone_w_review_summarized.xlsx")
-        
-        # Get unique skin tone IDs
-        expert_skin_ids = sorted(expert_df['Skin_ID'].unique())
-        sephora_skin_ids = sorted(review_df['Skin_ID_Sephora'].unique())
-        
-        return expert_skin_ids, sephora_skin_ids
-        
-    except Exception as e:
-        raise Exception(f"Error loading skin tone IDs: {str(e)}")
-
-def get_skintone_id(image_path):
-    """
-    Takes an image path and returns randomly generated skin tone IDs from the available options.
+    Detect skin tone from image and map to Sephora's ID using color distance.
     
     Args:
-        image_path (str): Path to the uploaded image
-        
+        image_path (str): Path to the input image.
+        excel_path (str): Path to the Excel file with skin tone mappings.
+    
     Returns:
-        tuple: (skin_tone_id, skin_id_sephora)
+        tuple: (skin_id, skin_id_sephora) - IDs for the detected skin tone.
     """
-    try:
-        # Load and verify the image
-        image = Image.open(image_path)
+    mp_face_mesh = mp.solutions.face_mesh
+    face_mesh = mp_face_mesh.FaceMesh(static_image_mode=True, max_num_faces=1, refine_landmarks=True)
+    
+    image = cv2.imread(image_path)
+    print('success image read')
+    rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    h, w, _ = rgb_image.shape
+    print('image height',h,'image width',w)
+    
+    results = face_mesh.process(rgb_image)
+    
+    if results.multi_face_landmarks:
+        face_landmarks = results.multi_face_landmarks[0]
+        landmark_indices = {
+            "Forehead": [69, 108, 151, 337, 299, 109, 10, 338, 297, 67, 9],
+            "Chin": [32, 194, 199, 208, 428, 201, 200, 219, 211, 421, 418, 424, 416, 432]
+        }
         
-        # Get available skin tone IDs from the files
-        expert_skin_ids, sephora_skin_ids = load_skin_tone_ids()
+        luminance_values = []
         
-        # Randomly select one ID from each list
-        skin_tone_id = random.choice(expert_skin_ids)
-        skin_id_sephora = random.choice(sephora_skin_ids)
+        for region, indices in landmark_indices.items():
+            for idx in indices:
+                x = int(face_landmarks.landmark[idx].x * w)
+                y = int(face_landmarks.landmark[idx].y * h)
+                rgb = rgb_image[y, x]
+                luminance = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+                luminance_values.append((luminance, rgb))
         
-        return skin_tone_id, skin_id_sephora
+        luminance_values.sort(reverse=True, key=lambda x: x[0])
+        top_10_rgb_values = [rgb for _, rgb in luminance_values[:10]]
+        print('Top N:',top_10_rgb_values)
         
-    except Exception as e:
-        raise Exception(f"Error processing image: {str(e)}")
+        if top_10_rgb_values:
+            top_10_rgb_values = np.array(top_10_rgb_values)
+            average_rgb = np.mean(top_10_rgb_values, axis=0).astype(int)
+            print(average_rgb)
+            skin_tone_df = pd.read_excel(excel_path, sheet_name='skinID to skinID_Sephora')
+            skin_tone_rgb_values = skin_tone_df[['R', 'G', 'B']].values
+            distances = np.linalg.norm(skin_tone_rgb_values - average_rgb, axis=1)
+            closest_index = np.argmin(distances)
+            closest_skin_tone = skin_tone_df.iloc[closest_index]
+            
+            skin_id = closest_skin_tone['Skin_ID']
+            skin_id_sephora = closest_skin_tone['Skin_ID_Sephora']
+            
+            return skin_id, skin_id_sephora
+        else:
+            raise Exception("No valid skin tone detected.")
+    else:
+        raise Exception("No face detected in the image.")
 
 # Test the function if running this file directly
 if __name__ == "__main__":
