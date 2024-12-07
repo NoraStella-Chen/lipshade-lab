@@ -1,18 +1,15 @@
-# Imports and Initial Setup
 import streamlit as st
-
-st.set_page_config(layout="wide")
 import pandas as pd
 import numpy as np
 import os
 from skintone_identification import get_skintone_id
 import plotly.express as px
 from PIL import Image, ImageOps
+import cv2
 
-# Set page configuration to wide mode
-# st.set_page_config(layout="wide")
+st.set_page_config(layout="wide")
 
-# Load the data files
+# Load data files
 file_path_expert_skintone = "recommendation_datasets/expertRecommendation_top_10_skus_per_RBG_w_review_summarized.xlsx"
 file_path_review_skintone = "recommendation_datasets/skinToneRecommendation_top_20_skus_per_skinTone_w_review_summarized.xlsx"
 file_path_colorcluster = "recommendation_datasets/colorClusterRecommendation_top_20_skus_per_colorCluster_w_review_summarized.xlsx"
@@ -21,59 +18,27 @@ expert_df = pd.read_excel(file_path_expert_skintone)
 review_df = pd.read_excel(file_path_review_skintone)
 color_df = pd.read_excel(file_path_colorcluster)
 
-
-# Section 2: Helper Functions for ID-Name Mapping
+# Helper Functions
 def create_id_name_mapping(df, id_column, name_column):
-    """Create a mapping between IDs and names"""
     return dict(zip(df[id_column], df[name_column]))
 
-
 def format_selection_options(mapping):
-    """Format options for selectbox with name but keeping ID as value"""
     return {f"{name} (ID: {id})": id for id, name in mapping.items()}
 
-
 def rgb_to_hex(r, g, b):
-    """Convert RGB values to hex color code"""
-    # Convert normalized RGB (0-1) to 0-255 range
     r, g, b = int(r * 255), int(g * 255), int(b * 255)
     return f"#{r:02x}{g:02x}{b:02x}"
 
-
-def get_color_options(df):
-    """Get color options with their properties"""
-    color_options = []
-    for _, row in df.drop_duplicates(
-        ["ColorCluster", "ClusterColorDescription"]
-    ).iterrows():
-        color_hex = rgb_to_hex(row["cluster_R"], row["cluster_G"], row["cluster_B"])
-        color_options.append(
-            {
-                "name": row["ClusterColorDescription"],
-                "id": row["ColorCluster"],
-                "color": color_hex,
-            }
-        )
-    return color_options
-
-
-# Section 3: Image Processing Function
 def load_and_process_image(uploaded_file):
-    # Open the image
     image = Image.open(uploaded_file)
+    image = ImageOps.exif_transpose(image)  # Fix orientation if needed
     
-    # Fix orientation using EXIF data
-    image = ImageOps.exif_transpose(image)
-    
-    # Calculate new dimensions while maintaining aspect ratio
     max_width = 300
     aspect_ratio = image.width / image.height
     new_width = min(max_width, image.width)
     new_height = int(new_width / aspect_ratio)
     
-    # Resize image
     resized_image = image.resize((new_width, new_height), Image.LANCZOS)
-    
     return resized_image
 
 def process_uploaded_image():
@@ -82,38 +47,37 @@ def process_uploaded_image():
     )
 
     if uploaded_file is not None:
+        # Display the uploaded image (original)
         processed_image = load_and_process_image(uploaded_file)
         st.image(processed_image, caption="Uploaded Image", use_column_width=False)
 
-        # Save the uploaded file temporarily
         with open("temp_image.jpg", "wb") as f:
             f.write(uploaded_file.getvalue())
 
         try:
-            # Get both skin tone IDs from the identification script
-            skin_tone_id, skin_id_sephora = get_skintone_id("temp_image.jpg")
+            # Modified get_skintone_id to return intermediate images as well
+            skin_tone_id, skin_id_sephora, grayworld_img, gamma_img, final_rgb_img = get_skintone_id("temp_image.jpg", return_intermediates=True)
 
-            # Get the mappings
+            # Show images side by side
+            st.markdown("### Processing Steps")
+            col1, col2, col3, col4 = st.columns(4)
+            col1.image(processed_image, caption="Original (Uploaded)")
+            col2.image(grayworld_img, caption="Gray World Balanced")
+            col3.image(gamma_img, caption="Gamma Corrected")
+            col4.image(final_rgb_img, caption="Final RGB Image")
+
+            # Get mappings
             expert_mapping = create_id_name_mapping(expert_df, "Skin_ID", "Skin_Name")
-            sephora_mapping = create_id_name_mapping(
-                review_df, "Skin_ID_Sephora", "Skin_Tone_Name"
-            )
+            sephora_mapping = create_id_name_mapping(review_df, "Skin_ID_Sephora", "Skin_Tone_Name")
 
-            # Get the names from the mappings
-            expert_name = expert_mapping.get(
-                skin_tone_id, f"Unknown (ID: {skin_tone_id})"
-            )
-            sephora_name = sephora_mapping.get(
-                skin_id_sephora, f"Unknown (ID: {skin_id_sephora})"
-            )
+            expert_name = expert_mapping.get(skin_tone_id, f"Unknown (ID: {skin_tone_id})")
+            sephora_name = sephora_mapping.get(skin_id_sephora, f"Unknown (ID: {skin_id_sephora})")
 
-            # Display results below the image in a container
             with st.container():
                 st.markdown("### Detected Skin Tones")
                 st.success(f"Expert System: {expert_name}")
                 st.success(f"Sephora System: {sephora_name}")
 
-            # Clean up temporary file
             if os.path.exists("temp_image.jpg"):
                 os.remove("temp_image.jpg")
 
@@ -125,8 +89,17 @@ def process_uploaded_image():
 
     return None, None
 
+def get_color_options(df):
+    color_options = []
+    for _, row in df.drop_duplicates(["ColorCluster", "ClusterColorDescription"]).iterrows():
+        color_hex = rgb_to_hex(row["cluster_R"], row["cluster_G"], row["cluster_B"])
+        color_options.append({
+            "name": row["ClusterColorDescription"],
+            "id": row["ColorCluster"],
+            "color": color_hex,
+        })
+    return color_options
 
-# Section 4: Recommendation Functions
 def get_recommendations(
     df, filter_column, filter_value, n_recommendations=5, source_name="Recommendation"
 ):
@@ -134,18 +107,14 @@ def get_recommendations(
     recommendations["weighted_rating"] = (
         recommendations["skuRating"] * recommendations["skuTotalReviews"]
     )
-    recommendations = recommendations.sort_values(
-        "weighted_rating", ascending=False
-    ).head(n_recommendations)
+    recommendations = recommendations.sort_values("weighted_rating", ascending=False).head(n_recommendations)
     recommendations["Source"] = source_name
     return recommendations
-
 
 def get_expert_recommendations(skin_tone_id, n_recommendations=5):
     return get_recommendations(
         expert_df, "Skin_ID", skin_tone_id, n_recommendations, "Expert Choice"
     )
-
 
 def get_review_recommendations(skin_id_sephora, n_recommendations=5):
     return get_recommendations(
@@ -156,16 +125,12 @@ def get_review_recommendations(skin_id_sephora, n_recommendations=5):
         "Top Rated by Users",
     )
 
-
 def get_color_recommendations(color_cluster_id, n_recommendations=5):
     return get_recommendations(
         color_df, "ColorCluster", color_cluster_id, n_recommendations, "Color Match"
     )
 
-
-# Section 5: Data Formatting and Filtering Functions
 def extract_first_price(price_str):
-    """Helper function to extract the first price from a price string"""
     try:
         cleaned = str(price_str).replace("$", "").strip()
         if " - " in cleaned:
@@ -174,9 +139,7 @@ def extract_first_price(price_str):
     except (ValueError, AttributeError):
         return None
 
-
 def format_dataframe(df):
-    # Format price
     def format_price(x):
         if pd.notnull(x):
             if not str(x).startswith("$"):
@@ -184,7 +147,6 @@ def format_dataframe(df):
             return str(x)
         return ""
 
-    # Format rating
     def format_rating(x):
         try:
             if pd.notnull(x):
@@ -193,7 +155,6 @@ def format_dataframe(df):
         except (ValueError, TypeError):
             return str(x)
 
-    # Create a copy of the dataframe with selected columns
     df["Product Info"] = (
         "Brand: "
         + df["brandName"].astype(str)
@@ -207,29 +168,18 @@ def format_dataframe(df):
         + df["skuTotalReviews"].astype(str)
         + " reviews)"
     )
-    formatted_df = df[
-        ["skuID", "Product Info", "Sentiment", "lipstick_image_base64", "URL"]
-    ].copy()
+    formatted_df = df[["skuID", "Product Info", "Sentiment", "lipstick_image_base64", "URL"]].copy()
 
-    # Make URLs clickable
     formatted_df["URL"] = formatted_df["URL"].apply(
-        lambda x: (
-            f'<a href="{x}" target="_blank">View Product</a>' if pd.notnull(x) else ""
-        )
+        lambda x: (f'<a href="{x}" target="_blank">View Product</a>' if pd.notnull(x) else "")
     )
 
-    # Convert base64 images to HTML img tags
     def convert_base64_to_img(base64_str, width="50px"):
-        if (
-            base64_str is not None
-            and pd.isnull(base64_str) == False
-            and len(str(base64_str)) > 0
-        ):
+        if base64_str and pd.isnull(base64_str) == False and len(str(base64_str)) > 0:
             return f'<img src="data:image/png;base64,{base64_str}" style="width: {width}"/>'
         else:
             return "No cover"
 
-    # Convert the base64 strings to HTML img tags
     formatted_df["lipstick_image_base64"] = formatted_df["lipstick_image_base64"].apply(
         lambda x: convert_base64_to_img(x) if x else ""
     )
@@ -245,7 +195,6 @@ def format_dataframe(df):
         lambda x: convert_text_to_scrollable_html(x) if x else ""
     )
 
-    # Rename columns for display
     column_rename = {
         "skuID": "SKU",
         "Product Info": "Product Info",
@@ -257,7 +206,6 @@ def format_dataframe(df):
 
     return formatted_df
 
-
 def add_filters(df):
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -265,7 +213,6 @@ def add_filters(df):
     with col2:
         price_values = df["currentSku_listPrice"].apply(extract_first_price)
         valid_prices = price_values.dropna()
-
         if not valid_prices.empty:
             min_price = st.number_input(
                 "Min Price",
@@ -282,11 +229,9 @@ def add_filters(df):
         else:
             min_price = 0
             max_price = float("inf")
-
     with col3:
         min_rating = st.slider("Minimum Rating", 0.0, 5.0, 0.0)
 
-    # Apply filters
     filtered_df = df.copy()
     if brand_filter:
         filtered_df = filtered_df[filtered_df["brandName"].isin(brand_filter)]
@@ -298,15 +243,10 @@ def add_filters(df):
     ]
     return filtered_df
 
-
-# Section 6: Visualization and Export Functions
 def add_visualizations(df):
     st.subheader("Product Analysis")
-
-    # Convert price strings to numeric values for plotting
     df["Price_Numeric"] = df["currentSku_listPrice"].apply(extract_first_price)
 
-    # Price Distribution
     fig_price = px.histogram(
         df,
         x="Price_Numeric",
@@ -315,7 +255,6 @@ def add_visualizations(df):
     )
     st.plotly_chart(fig_price)
 
-    # Rating vs Price Scatter Plot
     fig_scatter = px.scatter(
         df,
         x="Price_Numeric",
@@ -325,7 +264,6 @@ def add_visualizations(df):
         labels={"Price_Numeric": "Price ($)", "skuRating": "Rating"},
     )
     st.plotly_chart(fig_scatter)
-
 
 def add_export_option(df):
     if not df.empty:
@@ -337,9 +275,7 @@ def add_export_option(df):
             mime="text/csv",
         )
 
-
-# Section 7: Main App Layout and Sidebar
-# Streamlit app layout
+# Main Layout
 st.markdown(
     """
     <style>
@@ -357,22 +293,16 @@ st.markdown(
 
 st.title("Personalized Lipstick Recommendation Dashboard")
 
-# Create two columns for layout
-# col1, col2 = st.columns([1, 4])
-# Create columns with spacing
 col1, spacer, col2 = st.columns([1.3, 0.2, 3.7])
 
-# Sidebar contents
 with col1:
     st.header("Preferences")
-
     st.markdown(
         """
         ### Choose Your Method
-        You can either:
         - Upload an image for automatic skin tone detection
         - Manually select your skin tone
-    """
+        """
     )
 
     identification_method = st.radio(
@@ -383,17 +313,12 @@ with col1:
         ],
     )
 
-    # Initialize variables for skin tone IDs
     detected_expert_tone = None
     detected_sephora_tone = None
 
-    # Create mappings for each type of ID to name using the correct column names
     expert_mapping = create_id_name_mapping(expert_df, "Skin_ID", "Skin_Name")
-    sephora_mapping = create_id_name_mapping(
-        review_df, "Skin_ID_Sephora", "Skin_Tone_Name"
-    )
+    sephora_mapping = create_id_name_mapping(review_df, "Skin_ID_Sephora", "Skin_Tone_Name")
 
-    # Handle image upload if selected
     if identification_method == "Upload Image to identify Skin Tone":
         detected_expert_tone, detected_sephora_tone = process_uploaded_image()
         tab_options = [
@@ -409,19 +334,13 @@ with col1:
         ]
         tab = st.radio("Choose your method:", tab_options)
 
-    # Show different skin tone options based on selected tab
     if tab in (
         "Expert Recommended Products",
         "Choose your Skin Tone to get expert recommended product",
     ):
-        if (
-            identification_method == "Upload Image to identify Skin Tone"
-            and detected_expert_tone
-        ):
+        if identification_method == "Upload Image to identify Skin Tone" and detected_expert_tone:
             skin_tone_id = detected_expert_tone
-            skin_tone_name = expert_mapping.get(
-                skin_tone_id, f"Unknown (ID: {skin_tone_id})"
-            )
+            skin_tone_name = expert_mapping.get(skin_tone_id, f"Unknown (ID: {skin_tone_id})")
             st.info(f"Using detected skin tone: {skin_tone_name}")
         else:
             expert_options = format_selection_options(expert_mapping)
@@ -437,14 +356,9 @@ with col1:
         "Sephora user Recommended Products",
         "Choose your Skin Tone to get Sephora user recommended product",
     ):
-        if (
-            identification_method == "Upload Image to identify Skin Tone"
-            and detected_sephora_tone
-        ):
+        if identification_method == "Upload Image to identify Skin Tone" and detected_sephora_tone:
             skin_tone_id = detected_sephora_tone
-            skin_tone_name = sephora_mapping.get(
-                skin_tone_id, f"Unknown (ID: {skin_tone_id})"
-            )
+            skin_tone_name = sephora_mapping.get(skin_tone_id, f"Unknown (ID: {skin_tone_id})")
             st.info(f"Using detected skin tone: {skin_tone_name}")
         else:
             sephora_options = format_selection_options(sephora_mapping)
@@ -457,31 +371,19 @@ with col1:
             skin_tone_id = sephora_options[selected_name]
     else:  # Choose your favorite Color tab
         st.write("Select Color Group:")
-
-        # Create color options with names and IDs
-        unique_colors = color_df.drop_duplicates(
-            ["ColorCluster", "ClusterColorDescription"]
-        )
-        # Initialize color_cluster_id with the first color cluster as default
+        unique_colors = color_df.drop_duplicates(["ColorCluster", "ClusterColorDescription"])
         color_cluster_id = unique_colors.iloc[0]["ColorCluster"]
 
-        # Create a container for the color buttons
         color_container = st.container()
-
-        # Create columns for the color buttons (3 columns)
         cols = st.columns(3)
 
-        # Initialize session state for selected color if not exists
         if "selected_color_id" not in st.session_state:
-            st.session_state.selected_color_id = color_cluster_id  # Set default value
+            st.session_state.selected_color_id = color_cluster_id
 
-        # Create color buttons
         for idx, row in unique_colors.iterrows():
             col_idx = idx % 3
             color_hex = rgb_to_hex(row["cluster_R"], row["cluster_G"], row["cluster_B"])
-
             with cols[col_idx]:
-                # Create a button with color background
                 if st.button(
                     row["ClusterColorDescription"],
                     key=f"color_{row['ColorCluster']}",
@@ -489,8 +391,6 @@ with col1:
                     type="secondary",
                 ):
                     st.session_state.selected_color_id = row["ColorCluster"]
-
-                # Add color indicator
                 st.markdown(
                     f"""
                     <div style="height: 10px; 
@@ -503,17 +403,9 @@ with col1:
                     unsafe_allow_html=True,
                 )
 
-        # Display selected color information
         if st.session_state.selected_color_id is not None:
-            selected_row = unique_colors[
-                unique_colors["ColorCluster"] == st.session_state.selected_color_id
-            ].iloc[0]
-            color_hex = rgb_to_hex(
-                selected_row["cluster_R"],
-                selected_row["cluster_G"],
-                selected_row["cluster_B"],
-            )
-
+            selected_row = unique_colors[unique_colors["ColorCluster"] == st.session_state.selected_color_id].iloc[0]
+            color_hex = rgb_to_hex(selected_row["cluster_R"], selected_row["cluster_G"], selected_row["cluster_B"])
             st.markdown(
                 f"""
                 <div style="display: flex; align-items: center; 
@@ -538,8 +430,6 @@ with col1:
         help="Adjust the number of product recommendations you'd like to see",
     )
 
-# Section 8: Main Content Area
-# Main content
 with col2:
     if tab in (
         "Expert Recommended Products",
@@ -549,9 +439,7 @@ with col2:
         expert_recs = get_expert_recommendations(skin_tone_id, n_recommendations)
         expert_recs = add_filters(expert_recs)
         formatted_df = format_dataframe(expert_recs)
-        st.write(
-            formatted_df.to_html(escape=False, index=False), unsafe_allow_html=True
-        )
+        st.write(formatted_df.to_html(escape=False, index=False), unsafe_allow_html=True)
         add_visualizations(expert_recs)
         add_export_option(expert_recs)
 
@@ -563,9 +451,7 @@ with col2:
         review_recs = get_review_recommendations(skin_tone_id, n_recommendations)
         review_recs = add_filters(review_recs)
         formatted_df = format_dataframe(review_recs)
-        st.write(
-            formatted_df.to_html(escape=False, index=False), unsafe_allow_html=True
-        )
+        st.write(formatted_df.to_html(escape=False, index=False), unsafe_allow_html=True)
         add_visualizations(review_recs)
         add_export_option(review_recs)
 
@@ -574,14 +460,10 @@ with col2:
         color_recs = get_color_recommendations(color_cluster_id, n_recommendations)
         color_recs = add_filters(color_recs)
         formatted_df = format_dataframe(color_recs)
-        st.write(
-            formatted_df.to_html(escape=False, index=False), unsafe_allow_html=True
-        )
+        st.write(formatted_df.to_html(escape=False, index=False), unsafe_allow_html=True)
         add_visualizations(color_recs)
         add_export_option(color_recs)
 
-# Section 9: CSS Styling
-# Add custom CSS for better table styling
 st.markdown(
     """
     <style>
