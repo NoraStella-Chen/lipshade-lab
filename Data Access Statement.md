@@ -4,8 +4,8 @@
 This repository does not include the raw or processed datasets due to their large size. Please refer to the links below for data access. All data is owned by Sephora and is presented here strictly for academic, non-commercial use. Users must comply with Sephora’s terms of use and adhere to all applicable licenses.
 
 ## Data Access
-- **Raw Data:** [Link to Raw Data]
-- **Preprocessed Data:** [Link to Preprocessed Data]
+- **Raw Data:** [Link to Raw Data](https://drive.google.com/drive/folders/1YpIC5FMkOywOepyriTlxhTys8FUpzqhg?usp=drive_link)
+- **Preprocessed Data:** [Link to Preprocessed Data](https://drive.google.com/drive/folders/1qhZ-I2TCP2QRb5FCXTb6z-sKE_PkkWnG?usp=drive_link)
 
 ## Data Collection
 - **Source:** Data was collected from [Sephora’s website](https://www.sephora.com) in October 2024.
