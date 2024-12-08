@@ -35,7 +35,7 @@ def load_and_process_image(uploaded_file):
     
     max_width = 300
     aspect_ratio = image.width / image.height
-    new_width = min(max_width, image.width)
+    new_width = max_width
     new_height = int(new_width / aspect_ratio)
     
     resized_image = image.resize((new_width, new_height), Image.LANCZOS)
@@ -49,22 +49,20 @@ def process_uploaded_image():
     if uploaded_file is not None:
         # Display the uploaded image (original)
         processed_image = load_and_process_image(uploaded_file)
-        st.image(processed_image, caption="Uploaded Image")
+        col1, col2 = st.columns(2)
+        col1.markdown("Uploaded Image")
+        col1.image(processed_image, caption="Your Image")
 
         with open("temp_image.jpg", "wb") as f:
             f.write(uploaded_file.getvalue())
 
         try:
             # Modified get_skintone_id to return intermediate images as well
-            skin_tone_id, skin_id_sephora, grayworld_img, gamma_img, final_rgb_img = get_skintone_id("temp_image.jpg", return_intermediates=True)
+            skin_tone_id, skin_id_sephora, final_rgb_img = get_skintone_id("temp_image.jpg", return_intermediates=True)
 
             # Show images side by side
-            st.markdown("### Processing Steps")
-            col1, col2, col3, col4 = st.columns(4)
-            col1.image(processed_image, caption="Original (Uploaded)")
-            col2.image(grayworld_img, caption="Gray World Balanced")
-            col3.image(gamma_img, caption="Gamma Corrected")
-            col4.image(final_rgb_img, caption="Final RGB Image")
+            col2.markdown("Skin Tone")
+            col2.image(final_rgb_img, caption="Skin Tone Identified")
 
             # Get mappings
             expert_mapping = create_id_name_mapping(expert_df, "Skin_ID", "Skin_Name")
@@ -103,7 +101,7 @@ def get_color_options(df):
 def get_recommendations(
     df, filter_column, filter_value, n_recommendations=5, source_name="Recommendation"
 ):
-    recommendations = df[df[filter_column] == filter_value]
+    recommendations = df[df[filter_column] == filter_value].drop_duplicates(subset = [filter_column]+['skuID'])
     recommendations["weighted_rating"] = (
         recommendations["skuRating"] * recommendations["skuTotalReviews"]
     )
@@ -308,7 +306,7 @@ with col1:
     identification_method = st.radio(
         "How would you like to determine your skin tone?",
         [
-            "Upload Image to identify Skin Tone",
+            "Upload Image to identify Skin Tone (preferably with a white background)",
             "Manual Selection by Color or Skin Tone",
         ],
     )
@@ -319,7 +317,7 @@ with col1:
     expert_mapping = create_id_name_mapping(expert_df, "Skin_ID", "Skin_Name")
     sephora_mapping = create_id_name_mapping(review_df, "Skin_ID_Sephora", "Skin_Tone_Name")
 
-    if identification_method == "Upload Image to identify Skin Tone":
+    if identification_method == "Upload Image to identify Skin Tone (preferably with a white background)":
         detected_expert_tone, detected_sephora_tone = process_uploaded_image()
         tab_options = [
             "Expert Recommended Products",
@@ -338,7 +336,7 @@ with col1:
         "Expert Recommended Products",
         "Choose your Skin Tone to get expert recommended product",
     ):
-        if identification_method == "Upload Image to identify Skin Tone" and detected_expert_tone:
+        if identification_method == "Upload Image to identify Skin Tone (preferably with a white background)" and detected_expert_tone:
             skin_tone_id = detected_expert_tone
             skin_tone_name = expert_mapping.get(skin_tone_id, f"Unknown (ID: {skin_tone_id})")
             st.info(f"Using detected skin tone: {skin_tone_name}")
@@ -356,7 +354,7 @@ with col1:
         "Sephora user Recommended Products",
         "Choose your Skin Tone to get Sephora user recommended product",
     ):
-        if identification_method == "Upload Image to identify Skin Tone" and detected_sephora_tone:
+        if identification_method == "Upload Image to identify Skin Tone (preferably with a white background)" and detected_sephora_tone:
             skin_tone_id = detected_sephora_tone
             skin_tone_name = sephora_mapping.get(skin_tone_id, f"Unknown (ID: {skin_tone_id})")
             st.info(f"Using detected skin tone: {skin_tone_name}")
