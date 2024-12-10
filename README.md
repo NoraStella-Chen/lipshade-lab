@@ -6,3 +6,10 @@ If you have already installed all the dependencies specified in `requirements.tx
 
 ```bash
 pip install -r requirements.txt
+
+Navigate into the project directory:
+```bash
+git clone https://github.com/NoraStella-Chen/lipshade-lab.git
+cd Lipshade\ Recommendation
+
+
