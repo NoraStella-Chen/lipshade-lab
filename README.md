@@ -6,6 +6,19 @@ This repository contains the code to run the lipstick recommendation system usin
 
 ## Getting Started
 
+### Installation
+If you have not yet installed the necessary dependencies for the project, start by installing them via the `requirements.txt` file.
+
+```bash
+pip install -r requirements.txt
+```
+
+Navigate into the project directory
+```bash
+git clone https://github.com/NoraStella-Chen/lipshade-lab.git
+
+cd 3.\ Lipstick\ Recommendation 
+```
 
 
 
